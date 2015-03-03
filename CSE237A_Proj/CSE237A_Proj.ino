@@ -1,69 +1,12 @@
 
-
-// 
-//   FILE:  dht11_test1.pde
-// PURPOSE: DHT11 library test sketch for Arduino
-//
-
-//Celsius to Fahrenheit conversion
-double Fahrenheit(double celsius)
-{
-	return 1.8 * celsius + 32;
-}
-
-// fast integer version with rounding
-//int Celcius2Fahrenheit(int celcius)
-//{
-//  return (celsius * 18 + 5)/10 + 32;
-//}
-
-
-//Celsius to Kelvin conversion
-double Kelvin(double celsius)
-{
-	return celsius + 273.15;
-}
-
-// dewPoint function NOAA
-// reference (1) : http://wahiduddin.net/calc/density_algorithms.htm
-// reference (2) : http://www.colorado.edu/geography/weather_station/Geog_site/about.htm
-//
-double dewPoint(double celsius, double humidity)
-{
-	// (1) Saturation Vapor Pressure = ESGG(T)
-	double RATIO = 373.15 / (273.15 + celsius);
-	double RHS = -7.90298 * (RATIO - 1);
-	RHS += 5.02808 * log10(RATIO);
-	RHS += -1.3816e-7 * (pow(10, (11.344 * (1 - 1/RATIO ))) - 1) ;
-	RHS += 8.1328e-3 * (pow(10, (-3.49149 * (RATIO - 1))) - 1) ;
-	RHS += log10(1013.246);
-
-        // factor -3 is to adjust units - Vapor Pressure SVP * humidity
-	double VP = pow(10, RHS - 3) * humidity;
-
-        // (2) DEWPOINT = F(Vapor Pressure)
-	double T = log(VP/0.61078);   // temp var
-	return (241.88 * T) / (17.558 - T);
-}
-
-// delta max = 0.6544 wrt dewPoint()
-// 6.9 x faster than dewPoint()
-// reference: http://en.wikipedia.org/wiki/Dew_point
-double dewPointFast(double celsius, double humidity)
-{
-	double a = 17.271;
-	double b = 237.7;
-	double temp = (a * celsius) / (b + celsius) + log(humidity*0.01);
-	double Td = (b * temp) / (a - temp);
-	return Td;
-}
-
 #include <dht11.h>
+#include <temp.h>
+#include <Timer.h>
 #include <SoftwareSerial.h>
 
 //Bluetooth Initalization Parameters
-const int rxPin = 0; //SoftwaremySerial RX pin, connect to JY-MCY TX pin
-const int txPin = 1; //SoftwaremySerial TX pin, connect to JY-MCU RX pin
+const int rxPin = 2; //SoftwaremySerial RX pin, connect to JY-MCY TX pin
+const int txPin = 7; //SoftwaremySerial TX pin, connect to JY-MCU RX pin
                      // level shifting to 3.3 volts may be needed
 
 SoftwareSerial mySerial(rxPin, txPin); // RX, TX
@@ -75,27 +18,58 @@ dht11 DHT11;
 
 #define DHT11PIN 8
 
-int soundSensorPin=A4;
+int soundSensorPin=A5;
 int soundReading=0;
 int soundThreshold=20;
 
 int HCSR501PIN=4;
 
 int LEDPIN = 13;
-  
+
+Timer t;
+
+//Sensor Buffers
+float temp_buffer[10]; //5 Minutes of samples
+//These Buffes must store 1 bit at a time
+byte motion_buffer[60]; //1 Minute of samples (motion)
+byte sound_buffer[750]; //1 Minute of samples (sound)
+
+
+
 void setup()
 {
-  
-  //DHT11 (Temp/Humidity) Init
-  /*
-  mySerial.begin(115200);
-  mySerial.println("DHT11 TEST PROGRAM ");
-  mySerial.print("LIBRARY VERSION: ");
-  mySerial.println(DHT11LIB_VERSION);
-  mySerial.println();
-  */
   //Turn on Bluetooth mySerial
   mySerial.begin(9600);
+  Serial.begin(115200);
+  //Initialize Timer Events
+  //Temperature Sensor: 30s sample rate
+  int tempReadEvent = t.every(1000*30, DHT11_Reading);
+  mySerial.println("Started Temp Reading");
+  mySerial.println("EventID: ");
+  mySerial.println(tempReadEvent);
+  
+  /*
+  //Motion Sensor: 100ms sample rate
+  int motionReadEvent = t.every(100, HC_SR501_Reading);
+  mySerial.println("Started Motion Reading");
+  mySerial.println("EventID: ");
+  mySerial.println(motionReadEvent);
+  */
+  
+  //Sound Sensor: 10ms sample rate
+  int soundReadEvent = t.every(10, Sound_Sensor_Reading);
+  mySerial.println("Started Sound Reading");
+  mySerial.println("EventID: ");
+  mySerial.println(soundReadEvent);
+  
+  /*
+  int clearScreenEvent = t.every(1000, Clear_Screen);
+  mySerial.println("Started Clear Screen Event");
+  mySerial.println("EventID: ");
+  mySerial.println(clearScreenEvent);
+  */
+  
+  
   
   //HC_SR501 - Motion Sensor Init
   pinMode(HCSR501PIN,INPUT);
@@ -107,6 +81,15 @@ void setup()
   pinMode(LEDPIN, OUTPUT);
   //Turn LED Off
   digitalWrite(LEDPIN, LOW);
+}
+
+void Clear_Screen()
+{
+  //Clear Screen
+  mySerial.write(27);       // ESC command
+  mySerial.print("[2J");    // clear screen command
+  mySerial.write(27);
+  mySerial.print("[H");     // cursor to home command
 }
 
 void DHT11_Reading()
@@ -174,43 +157,20 @@ void Sound_Sensor_Reading()
   if(soundReading >1){
     mySerial.print("Sound Reading: ");
     mySerial.println(soundReading);
+    Serial.print("Sound Reading: ");
+    Serial.println(soundReading);
   }
-  /*
+  
   if(soundReading > 10){
     digitalWrite(LEDPIN, HIGH);
   }else{
     digitalWrite(LEDPIN, LOW); 
   }
-  */
+  
 }
 
 void Bluetooth_Module()
 {
-  //reads mySerial input and saves it in the state variable
-  //mySerial.println("Test");
-  /*
-    if(mySerial.available() > 0){
-      state = mySerial.read();
-      flag=0; //clear the flag so we can print the state
-    }
-    // if the state is '0' the LED will turn off
-    if (state == '0') {
-        digitalWrite(LEDPIN, LOW);
-        if(flag == 0){
-          mySerial.println("LED: off");
-          flag = 1;
-        }
-    }
-    // if the state is '1' the led will turn on
-    else if (state == '1') {
-        digitalWrite(LEDPIN, HIGH);
-        if(flag == 0){
-          mySerial.println("LED: on");
-          flag = 1;
-        }
-    }
-  */
-
   typedef enum {SM_IDLE, READ_TEMP, READ_MOTION, READ_SOUND} STATES;
   //Implement State Machine
   static STATES STATE = SM_IDLE;
@@ -257,7 +217,7 @@ void Bluetooth_Module()
       mySerial.print("[H");     // cursor to home command
       break;
     case READ_TEMP:
-      DHT11_Reading();
+      //DHT11_Reading();
       //Delay
       delay(1000);
       //Clear Screen
@@ -267,7 +227,7 @@ void Bluetooth_Module()
       mySerial.print("[H");     // cursor to home command
       break;
     case READ_MOTION:
-      HC_SR501_Reading();
+      //HC_SR501_Reading();
       //Delay
       delay(100);
       //Clear Screen
@@ -277,7 +237,7 @@ void Bluetooth_Module()
       mySerial.print("[H");     // cursor to home command
       break;
     case READ_SOUND:
-      Sound_Sensor_Reading();
+      //Sound_Sensor_Reading();
       //Delay
       delay(10);
       break;
@@ -300,11 +260,39 @@ void loop()
   
   //Bluetooth Module
   //This module will control when we read from sensors
-  Bluetooth_Module();
+  //Bluetooth_Module();
   
+  /*
+  int i;
+  for(i=0; i < 10; i++){
+    temp_buffer[i] = 1;
+    mySerial.print("TempBuffer=");
+    mySerial.println(i);
+    mySerial.println(temp_buffer[i]);
+  }
+  for(i=0; i<600; i++){
+    motion_buffer[i] = 1; 
+    mySerial.print("motionbuffer=");
+    mySerial.println(i);
+    mySerial.println(motion_buffer[i]);
+  }
   
+  for(i=0; i<600; i++){
+    motion_buffer[i] = 1; 
+    mySerial.print("soundbuffer=");
+    mySerial.println(i);
+    mySerial.println(sound_buffer[i]);
+  }
+  */
   
-  
+  t.update();
+  /*
+  //Clear Screen
+  mySerial.write(27);       // ESC command
+  mySerial.print("[2J");    // clear screen command
+  mySerial.write(27);
+  mySerial.print("[H");     // cursor to home command
+  */
 }
 
 //
