@@ -1,6 +1,4 @@
-int soundSensorPin=A0;
-int soundReading=0;
-int soundThreshold=20;
+
 
 // 
 //   FILE:  dht11_test1.pde
@@ -61,93 +59,254 @@ double dewPointFast(double celsius, double humidity)
 }
 
 #include <dht11.h>
+#include <SoftwareSerial.h>
+
+//Bluetooth Initalization Parameters
+const int rxPin = 0; //SoftwaremySerial RX pin, connect to JY-MCY TX pin
+const int txPin = 1; //SoftwaremySerial TX pin, connect to JY-MCU RX pin
+                     // level shifting to 3.3 volts may be needed
+
+SoftwareSerial mySerial(rxPin, txPin); // RX, TX
+int state = 0;        // if state is 1, the LED will turn on and
+                      // if state is 0, the LED will turn off
+int flag = 0;         // a flag to prevent duplicate messages
 
 dht11 DHT11;
 
 #define DHT11PIN 8
 
+int soundSensorPin=A4;
+int soundReading=0;
+int soundThreshold=20;
+
+int HCSR501PIN=4;
+
+int LEDPIN = 13;
+  
 void setup()
 {
+  
   //DHT11 (Temp/Humidity) Init
-  Serial.begin(115200);
-  Serial.println("DHT11 TEST PROGRAM ");
-  Serial.print("LIBRARY VERSION: ");
-  Serial.println(DHT11LIB_VERSION);
-  Serial.println();
+  /*
+  mySerial.begin(115200);
+  mySerial.println("DHT11 TEST PROGRAM ");
+  mySerial.print("LIBRARY VERSION: ");
+  mySerial.println(DHT11LIB_VERSION);
+  mySerial.println();
+  */
+  //Turn on Bluetooth mySerial
+  mySerial.begin(9600);
   
   //HC_SR501 - Motion Sensor Init
-  pinMode(13,OUTPUT);
-  pinMode(2,INPUT);
+  pinMode(HCSR501PIN,INPUT);
   
   //Sound Sensor Init
   pinMode(soundSensorPin, INPUT);
+  
+  //LED Pin
+  pinMode(LEDPIN, OUTPUT);
+  //Turn LED Off
+  digitalWrite(LEDPIN, LOW);
+}
+
+void DHT11_Reading()
+{
+  //DHT_11 Main Code
+  mySerial.println("\n");
+
+  int chk = DHT11.read(DHT11PIN);
+
+  mySerial.print("Read sensor: ");
+  switch (chk)
+  {
+    case DHTLIB_OK: 
+      mySerial.println("OK"); 
+      break;
+    case DHTLIB_ERROR_CHECKSUM: 
+      mySerial.println("Checksum error"); 
+      break;
+    case DHTLIB_ERROR_TIMEOUT: 
+      mySerial.println("Time out error"); 
+      break;
+    default: 
+      mySerial.println("Unknown error"); 
+      break;
+  }
+
+  mySerial.print("Humidity (%): ");
+  mySerial.println((float)DHT11.humidity, 2);
+
+  mySerial.print("Temperature (C): ");
+  mySerial.println((float)DHT11.temperature, 2);
+
+  mySerial.print("Temperature (F): ");
+  mySerial.println(Fahrenheit(DHT11.temperature), 2);
+
+  mySerial.print("Temperature (K): ");
+  mySerial.println(Kelvin(DHT11.temperature), 2);
+
+  mySerial.print("Dew Point (C): ");
+  mySerial.println(dewPoint(DHT11.temperature, DHT11.humidity));
+
+  mySerial.print("Dew PointFast (C): ");
+  mySerial.println(dewPointFast(DHT11.temperature, DHT11.humidity));
+  
+  
+
+}
+
+void HC_SR501_Reading()
+{
+  //Motion Sensor
+  //HC_SR501 Main Code
+  //digitalWrite(13,digitalRead(2));
+  if(digitalRead(HCSR501PIN)){
+    mySerial.println("Motion: 1\n");
+  }else{
+    mySerial.println("Motion: 0\n"); 
+  }
+}
+
+void Sound_Sensor_Reading()
+{
+  //Sound Sensor Main Code
+  soundReading = analogRead(soundSensorPin);
+  if(soundReading >1){
+    mySerial.print("Sound Reading: ");
+    mySerial.println(soundReading);
+  }
+  /*
+  if(soundReading > 10){
+    digitalWrite(LEDPIN, HIGH);
+  }else{
+    digitalWrite(LEDPIN, LOW); 
+  }
+  */
+}
+
+void Bluetooth_Module()
+{
+  //reads mySerial input and saves it in the state variable
+  //mySerial.println("Test");
+  /*
+    if(mySerial.available() > 0){
+      state = mySerial.read();
+      flag=0; //clear the flag so we can print the state
+    }
+    // if the state is '0' the LED will turn off
+    if (state == '0') {
+        digitalWrite(LEDPIN, LOW);
+        if(flag == 0){
+          mySerial.println("LED: off");
+          flag = 1;
+        }
+    }
+    // if the state is '1' the led will turn on
+    else if (state == '1') {
+        digitalWrite(LEDPIN, HIGH);
+        if(flag == 0){
+          mySerial.println("LED: on");
+          flag = 1;
+        }
+    }
+  */
+
+  typedef enum {SM_IDLE, READ_TEMP, READ_MOTION, READ_SOUND} STATES;
+  //Implement State Machine
+  static STATES STATE = SM_IDLE;
+  
+  //State Transition Logic
+  if(mySerial.available() > 0){
+    state = mySerial.read();
+    switch(state){
+      case '0': 
+        mySerial.println("Switching to IDLE State\n");
+        STATE = SM_IDLE;
+        break;
+      case '1':
+        mySerial.println("Switching to TEMP State\n");
+        STATE = READ_TEMP;
+        break;
+      case '2':
+        mySerial.println("Switching to MOTION State\n");
+        STATE = READ_MOTION;
+        break;
+      case '3':
+        mySerial.println("Switching to SOUND State\n");
+        STATE = READ_SOUND;
+        break;
+      default:
+        STATE = SM_IDLE;
+        break;
+    }
+    flag=0; //clear the flag so we can print the state
+  }
+  
+  switch(STATE){
+    case SM_IDLE:
+      mySerial.println("IDLE State\n");
+      mySerial.println("1 -> Temp Readings\n");
+      mySerial.println("2 -> Motion Sensor Readings\n");
+      mySerial.println("3 -> Sound Sensor Readings\n");
+      //Delay
+      delay(1000);
+      //Clear Screen
+      mySerial.write(27);       // ESC command
+      mySerial.print("[2J");    // clear screen command
+      mySerial.write(27);
+      mySerial.print("[H");     // cursor to home command
+      break;
+    case READ_TEMP:
+      DHT11_Reading();
+      //Delay
+      delay(1000);
+      //Clear Screen
+      mySerial.write(27);       // ESC command
+      mySerial.print("[2J");    // clear screen command
+      mySerial.write(27);
+      mySerial.print("[H");     // cursor to home command
+      break;
+    case READ_MOTION:
+      HC_SR501_Reading();
+      //Delay
+      delay(100);
+      //Clear Screen
+      mySerial.write(27);       // ESC command
+      mySerial.print("[2J");    // clear screen command
+      mySerial.write(27);
+      mySerial.print("[H");     // cursor to home command
+      break;
+    case READ_SOUND:
+      Sound_Sensor_Reading();
+      //Delay
+      delay(10);
+      break;
+  }
+  
+  
+  
 }
 
 void loop()
 {
-  //DHT_11 Main Code
-  /*
-  Serial.println("\n");
-
-  int chk = DHT11.read(DHT11PIN);
-
-  Serial.print("Read sensor: ");
-  switch (chk)
-  {
-    case DHTLIB_OK: 
-		Serial.println("OK"); 
-		break;
-    case DHTLIB_ERROR_CHECKSUM: 
-		Serial.println("Checksum error"); 
-		break;
-    case DHTLIB_ERROR_TIMEOUT: 
-		Serial.println("Time out error"); 
-		break;
-    default: 
-		Serial.println("Unknown error"); 
-		break;
-  }
-
-  Serial.print("Humidity (%): ");
-  Serial.println((float)DHT11.humidity, 2);
-
-  Serial.print("Temperature (C): ");
-  Serial.println((float)DHT11.temperature, 2);
-
-  Serial.print("Temperature (F): ");
-  Serial.println(Fahrenheit(DHT11.temperature), 2);
-
-  Serial.print("Temperature (K): ");
-  Serial.println(Kelvin(DHT11.temperature), 2);
-
-  Serial.print("Dew Point (C): ");
-  Serial.println(dewPoint(DHT11.temperature, DHT11.humidity));
-
-  Serial.print("Dew PointFast (C): ");
-  Serial.println(dewPointFast(DHT11.temperature, DHT11.humidity));
-
-
-  //HC_SR501 Main Code
-  //digitalWrite(13,digitalRead(2));
-  if(digitalRead(2)){
-     Serial.println("Motion: 1\n");
-  }else{
-     Serial.println("Motion: 0\n"); 
-  }
-  */
-  //Sound Sensor Main Code
-  soundReading = analogRead(soundSensorPin);
-  if(soundReading > soundThreshold){
-     digitalWrite(13, HIGH);
-  }else{
-     digitalWrite(13, LOW); 
-  }
-  Serial.print("Sound Reading: ");
-  Serial.println(soundReading);
+  //Temperature Readings
+  //DHT11_Reading();
   
-  //Delay
-  delay(100);
+  //Motion Sensor Readings
+  //HC_SR501_Reading();
+  
+  //Sound Sensor Readings
+  //Sound_Sensor_Reading();
+  
+  //Bluetooth Module
+  //This module will control when we read from sensors
+  Bluetooth_Module();
+  
+  
+  
+  
 }
+
 //
 // END OF FILE
 //
