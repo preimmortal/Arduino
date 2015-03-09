@@ -42,6 +42,7 @@ int HCSR501PIN=4;
 /***************************************/
 int LEDPIN = 13;
 int LEDSOUNDPIN = 12;
+int LEDMOTIONPIN = 11;
 
 
 /***************************************/
@@ -50,13 +51,15 @@ int LEDSOUNDPIN = 12;
 Timer t;
 int initIdle = 0;
 int initTemp = 0;
+int initMonitor = 0;
+
 /***************************************/
 /* Buffers Init */
 /***************************************/
 //Buffer Sizes
 #define TEMP_BUF_SIZE 10
-#define MOTION_BUF_SIZE 60
-#define SOUND_BUF_SIZE 750
+#define MOTION_BUF_SIZE 45
+#define SOUND_BUF_SIZE 600
 //Initialize Buffers
 float temp_buffer[TEMP_BUF_SIZE]; //5 Minutes of samples - Stored in deg C
 float humidity_buffer[TEMP_BUF_SIZE]; // 5 Minutes of samples
@@ -77,6 +80,14 @@ static int SOUND_BUF_IDX = 0;
 byte SOUND_FLAG = 0;
 byte MOTION_FLAG = 0;
 
+/***************************************/
+/* Sensor Read Rates Init */
+/***************************************/
+#define MOTION_RATE 100
+#define SOUND_RATE 10
+#define TEMP_RATE 1000*6
+//Do monitor samples for previous MONITOR_RATE seconds
+#define MONITOR_RATE 30
 
 /***************************************/
 /* Setup Function */
@@ -88,21 +99,21 @@ void setup()
   Serial.begin(115200);
   //Initialize Timer Events
   //Temperature Sensor: 30s sample rate
-  int tempReadEvent = t.every(1000, DHT11_Reading);
+  int tempReadEvent = t.every(TEMP_RATE, DHT11_Reading);
   mySerial.println("Started Temp Reading");
   mySerial.println("EventID: ");
   mySerial.println(tempReadEvent);
   
   
   //Motion Sensor: 100ms sample rate
-  int motionReadEvent = t.every(100, HC_SR501_Reading);
+  int motionReadEvent = t.every(MOTION_RATE, HC_SR501_Reading);
   mySerial.println("Started Motion Reading");
   mySerial.println("EventID: ");
   mySerial.println(motionReadEvent);
   
   
   //Sound Sensor: 10ms sample rate
-  int soundReadEvent = t.every(10, Sound_Sensor_Reading);
+  int soundReadEvent = t.every(SOUND_RATE, Sound_Sensor_Reading);
   mySerial.println("Started Sound Reading");
   mySerial.println("EventID: ");
   mySerial.println(soundReadEvent);
@@ -129,6 +140,11 @@ void setup()
 
 void Clear_Screen()
 {
+  //Clear Screen
+  Serial.write(27);       // ESC command
+  Serial.print("[2J");    // clear screen command
+  Serial.write(27);
+  Serial.print("[H");     // cursor to home command
   //Clear Screen
   mySerial.write(27);       // ESC command
   mySerial.print("[2J");    // clear screen command
@@ -167,6 +183,7 @@ void HC_SR501_Reading()
   //HC_SR501 Main Code
   //digitalWrite(13,digitalRead(2));
   if(digitalRead(HCSR501PIN)){
+    digitalWrite(LEDMOTIONPIN, HIGH);
     int BUF_IDX = MOTION_BUF_IDX / 8;
     int SUB_IDX = MOTION_BUF_IDX % 8;
     byte WriteVal = 1<<SUB_IDX;
@@ -188,6 +205,7 @@ void HC_SR501_Reading()
       mySerial.println("Motion: 1"); 
     }
   }else{
+    digitalWrite(LEDMOTIONPIN, LOW);
     int BUF_IDX = MOTION_BUF_IDX / 8;
     int SUB_IDX = MOTION_BUF_IDX % 8;
     byte WriteVal = 1<<SUB_IDX;
@@ -291,44 +309,7 @@ void Sound_Sensor_Reading()
 }
 
 void DHT11_Value(){
-  //Clear Screen
-      Serial.write(27);       // ESC command
-      Serial.print("[2J");    // clear screen command
-      Serial.write(27);
-      Serial.print("[H");     // cursor to home command
-      //Clear Screen
-      mySerial.write(27);       // ESC command
-      mySerial.print("[2J");    // clear screen command
-      mySerial.write(27);
-      mySerial.print("[H");     // cursor to home command
-  
-  int i;
-  Serial.println("Last 10 T/H Readings");
-  mySerial.println("Last 10 T/H Readings");
-  
-  for(i=0; i<TEMP_BUF_SIZE; i++){
-    Serial.print(i);
-    Serial.print(" -- "); 
-    Serial.print("Temp: ");
-    Serial.print(temp_buffer[i]); 
-    Serial.print(" C - ");
-    Serial.print(Fahrenheit(DHT11.temperature));
-    Serial.print(" F -- ");
-    Serial.print("Humidity: ");
-    Serial.print(humidity_buffer[i]);
-    Serial.println(" percent");
-    
-    mySerial.print(i);
-    mySerial.print(" -- "); 
-    mySerial.print("Temp: ");
-    mySerial.print(temp_buffer[i]); 
-    mySerial.print(" C - ");
-    mySerial.print(Fahrenheit(DHT11.temperature));
-    mySerial.print(" F -- ");
-    mySerial.print("Humidity: ");
-    mySerial.print(humidity_buffer[i]);
-    mySerial.println(" percent");
-  }
+  Clear_Screen();
   
   Serial.print("Current Readings -- ");
   Serial.print("Temp: ");
@@ -349,38 +330,174 @@ void DHT11_Value(){
   mySerial.print("Humidity: ");
   mySerial.print((float)DHT11.humidity);
   mySerial.println(" percent");
+  
+  int i;
+  Serial.println("Last 10 T/H Readings");
+  mySerial.println("Last 10 T/H Readings");
+  
+  for(i=0; i<TEMP_BUF_SIZE; i++){
+    Serial.print(i);
+    Serial.print(" -- "); 
+    Serial.print("Temp: ");
+    Serial.print(temp_buffer[i]); 
+    Serial.print(" C - ");
+    Serial.print(Fahrenheit(temp_buffer[i]));
+    Serial.print(" F -- ");
+    Serial.print("Humidity: ");
+    Serial.print(humidity_buffer[i]);
+    Serial.println(" percent");
+    
+    mySerial.print(i);
+    mySerial.print(" -- "); 
+    mySerial.print("Temp: ");
+    mySerial.print(temp_buffer[i]); 
+    mySerial.print(" C - ");
+    mySerial.print(Fahrenheit(temp_buffer[i]));
+    mySerial.print(" F -- ");
+    mySerial.print("Humidity: ");
+    mySerial.print(humidity_buffer[i]);
+    mySerial.println(" percent");
+  }
+  
+  
 }
 
 void Print_Init(){
-      //Clear Screen
-      mySerial.write(27);       // ESC command
-      mySerial.print("[2J");    // clear screen command
-      mySerial.write(27);
-      mySerial.print("[H");     // cursor to home command
-      
-      //Clear Screen
-      Serial.write(27);       // ESC command
-      Serial.print("[2J");    // clear screen command
-      Serial.write(27);
-      Serial.print("[H");     // cursor to home command
+  Clear_Screen();
   
-      //Print IDLE Message
-      mySerial.println("IDLE State\n");
-      mySerial.println("1 -> Temp Readings\n");
-      mySerial.println("2 -> Motion Sensor Readings\n");
-      mySerial.println("3 -> Sound Sensor Readings\n");
+  //Print IDLE Message
+  mySerial.println("IDLE State\n");
+  mySerial.println("1 -> Temp Readings\n");
+  mySerial.println("2 -> Motion Sensor Readings\n");
+  mySerial.println("3 -> Sound Sensor Readings\n");
+  mySerial.println("4 -> Sensor Monitor\n");
+
+  Serial.println("IDLE State\n");
+  Serial.println("1 -> Temp Readings\n");
+  Serial.println("2 -> Motion Sensor Readings\n");
+  Serial.println("3 -> Sound Sensor Readings\n");
+  Serial.println("4 -> Sensor Monitor\n");
       
-      Serial.println("IDLE State\n");
-      Serial.println("1 -> Temp Readings\n");
-      Serial.println("2 -> Motion Sensor Readings\n");
-      Serial.println("3 -> Sound Sensor Readings\n");
+}
+
+void Print_Monitor()
+{
+  Clear_Screen();
       
-      
+  //Use Heuristics to create Sensor Monitor  
+  
+  //Average Temp/Humidity
+  float avgTemp = 0;
+  float avgHumidity = 0;
+  int i;
+  for(i=0; i<TEMP_BUF_SIZE; i++){
+    avgTemp += temp_buffer[i];
+    avgHumidity += humidity_buffer[i];
+  }
+  avgTemp /= TEMP_BUF_SIZE;
+  avgHumidity /= TEMP_BUF_SIZE;
+  
+  Serial.print("Average Temp: ");
+  Serial.print(avgTemp);
+  Serial.print(" C. / ");
+  Serial.print(Fahrenheit(avgTemp));
+  Serial.println(" F.");
+  Serial.print("Average Humidity: ");
+  Serial.print(avgHumidity);
+  Serial.println(" Percent.");
+  
+  mySerial.print("Average Temp: ");
+  mySerial.print(avgTemp);
+  mySerial.print(" C. / ");
+  mySerial.print(Fahrenheit(avgTemp));
+  mySerial.println(" F.");
+  mySerial.print("Average Humidity: ");
+  mySerial.print(avgHumidity);
+  mySerial.println(" Percent.");
+  
+  //Do Sound Sensor + Humidity Sensor Heuristics
+  int soundReadingsPerSec = 1000/SOUND_RATE;
+  int soundTotal = 0;
+  int curSoundIdx = SOUND_BUF_IDX;
+  for(i=0; i<soundReadingsPerSec*MONITOR_RATE/8; i++){
+    int IDX = (curSoundIdx/8)-i-1;
+    if(IDX<0){
+       IDX = SOUND_BUF_SIZE+IDX; 
+    }
+    /*
+    Serial.print(IDX);
+    Serial.print(" : ");
+    Serial.println(sound_buffer[IDX]);
+    */
+    if(sound_buffer[IDX] > 0){
+      soundTotal++;
+    }
+  }
+  //If more than 10% sound above threshold, then consider SOUND ON
+  byte soundHigh = 0;
+  //Serial.println(soundTotal);
+  //Serial.println(soundReadingsPerSec*MONITOR_RATE/(8*10));
+  if(soundTotal > soundReadingsPerSec*MONITOR_RATE/(8*10)){
+    soundHigh = 1;
+    Serial.println("SOUND HIGH"); 
+    mySerial.println("SOUND HIGH"); 
+  }else{
+    soundHigh = 0;
+    Serial.println("SOUND LOW");
+    mySerial.println("SOUND LOW");
+  }
+  
+  
+  int motionReadingsPerSec = 1000/MOTION_RATE;
+  int motionTotal = 0;
+  int motionCurIdx = MOTION_BUF_IDX;
+  //Serial.println(motionCurIdx);
+  for(i=0; i<motionReadingsPerSec*MONITOR_RATE/8; i++){
+    int IDX = (motionCurIdx/8) - i - 1;
+    if(IDX<0){
+      IDX = MOTION_BUF_SIZE+IDX; 
+    }
+    
+    if(motion_buffer[IDX] > 1){
+      motionTotal++; 
+    }
+    //Serial.println(IDX);
+    //Serial.println(motion_buffer[IDX]);
+  }
+  //Serial.println(motionTotal);
+  byte motionHigh;
+  if(motionTotal > motionReadingsPerSec*MONITOR_RATE/(8*10)){
+    motionHigh = 1;
+    Serial.println("MOTION HIGH"); 
+    mySerial.println("MOTION HIGH"); 
+  }else{
+    motionHigh = 0;
+    Serial.println("MOTION LOW");
+    mySerial.println("MOTION LOW");
+  }
+  
+  if(motionHigh==1 && soundHigh==1){
+    Serial.println("Room Status: In Use"); 
+    mySerial.println("Room Status: In Use");
+  }
+  else if(motionHigh==0 && soundHigh==1){
+    Serial.println("Room Status: Not In Use");
+    mySerial.println("Room Status: Not In Use");
+  }
+  else if(motionHigh==1 && soundHigh==0){
+    Serial.println("Room Status: In Use"); 
+    mySerial.println("Room Status: In Use");
+  }
+  else{
+    Serial.println("Room Status: Not In Use");
+    mySerial.println("Room Status: Not In Use"); 
+  }
+  
 }
 
 void Bluetooth_Module()
 {
-  typedef enum {SM_IDLE, READ_TEMP, READ_MOTION, READ_SOUND} STATES;
+  typedef enum {SM_IDLE, READ_TEMP, READ_MOTION, READ_SOUND, SM_MONITOR} STATES;
   //Implement State Machine
   static STATES STATE = SM_IDLE;
   STATES NEXT_STATE = STATE;
@@ -393,52 +510,78 @@ void Bluetooth_Module()
     event2 = Serial.read();
     switch(event){
       case '0': 
+        Clear_Screen();
         mySerial.println("Switching to IDLE State\n");
         Serial.println("Switching to IDLE State\n");
         NEXT_STATE = SM_IDLE;
         break;
       case '1':
+        Clear_Screen();
         mySerial.println("Switching to TEMP State\n");
         Serial.println("Switching to TEMP State\n");
         NEXT_STATE = READ_TEMP;
         break;
       case '2':
+        Clear_Screen();
         mySerial.println("Switching to MOTION State\n");
         Serial.println("Switching to MOTION State\n");
         NEXT_STATE = READ_MOTION;
         break;
       case '3':
+        Clear_Screen();
         mySerial.println("Switching to SOUND State\n");
         Serial.println("Switching to SOUND State\n");
         NEXT_STATE = READ_SOUND;
         break;
+      case '4':
+        Clear_Screen();
+        mySerial.println("Switching to MONITOR State\n");
+        Serial.println("Switching to MONITOR State\n");
+        NEXT_STATE = SM_MONITOR;
+        break;
       default:
+        Clear_Screen();
+        mySerial.println("Switching to IDLE State\n");
+        Serial.println("Switching to IDLE State\n");
         NEXT_STATE = SM_IDLE;
         break;
     }
     
     switch(event2){
       case '0': 
+        Clear_Screen();
         mySerial.println("Switching to IDLE State\n");
         Serial.println("Switching to IDLE State\n");
         NEXT_STATE = SM_IDLE;
         break;
       case '1':
+        Clear_Screen();
         mySerial.println("Switching to TEMP State\n");
         Serial.println("Switching to TEMP State\n");
         NEXT_STATE = READ_TEMP;
         break;
       case '2':
+        Clear_Screen();
         mySerial.println("Switching to MOTION State\n");
         Serial.println("Switching to MOTION State\n");
         NEXT_STATE = READ_MOTION;
         break;
       case '3':
+        Clear_Screen();
         mySerial.println("Switching to SOUND State\n");
         Serial.println("Switching to SOUND State\n");
         NEXT_STATE = READ_SOUND;
         break;
+      case '4':
+        Clear_Screen();
+        mySerial.println("Switching to MONITOR State\n");
+        Serial.println("Switching to MONITOR State\n");
+        NEXT_STATE = SM_MONITOR;
+        break;
       default:
+        Clear_Screen();
+        mySerial.println("Switching to IDLE State\n");
+        Serial.println("Switching to IDLE State\n");
         NEXT_STATE = SM_IDLE;
         break;
     }
@@ -478,6 +621,15 @@ void Bluetooth_Module()
       SOUND_FLAG = 1;
       if(NEXT_STATE != READ_SOUND){
          SOUND_FLAG = 0; 
+      }
+      break;
+    case SM_MONITOR:
+      if(initMonitor == 0){
+        initMonitor = t.every(2000, Print_Monitor);
+      }
+      if(NEXT_STATE != SM_MONITOR){
+        t.stop(initMonitor);
+        initMonitor = 0; 
       }
       break;
   }
