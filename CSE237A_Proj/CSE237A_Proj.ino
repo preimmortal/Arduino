@@ -6,7 +6,7 @@
 #include <avr/pgmspace.h>
 
 //#define DEBUG
-#define SERIAL
+//#define SERIAL
 
 /***************************************/
 /* Bluetooth Init */
@@ -505,9 +505,8 @@ void Bluetooth_Module()
   int event2 = 0;
 
   //State Transition Logic
-  if(mySerial.available() > 0 || Serial.available() > 0){
+  if(mySerial.available() > 0){
     event = mySerial.read();
-    event2 = Serial.read();
     switch(event){
       case '0': 
         Clear_Screen();
@@ -546,7 +545,9 @@ void Bluetooth_Module()
         NEXT_STATE = SM_IDLE;
         break;
     }
-    
+  }
+  else if(Serial.available() > 0){
+    event2 = Serial.read();
     switch(event2){
       case '0': 
         Clear_Screen();
